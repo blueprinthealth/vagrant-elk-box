@@ -29,6 +29,23 @@ vagrant provision # applies the bash and puppet provisioning
 
 ```
 
+When logged into the VM, you can check on the logstash service as follows:
+
+```bash
+
+ sudo /etc/init.d/logstash status
+```
+
+If logstash needs to be started or restarted, just do the following:
+
+```bash
+ sudo /etc/init.d/logstash start
+ 
+ sudo /etc/init.d/logstash restart
+```
+
+If you experience errors, you can check for errors in ```/var/log/logstash/logstash.log```.
+
 To run Logstash manually.
 Use the following command to use an example logstash config and feed example log file located at example-logs/testlog
 
