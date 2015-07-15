@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 #
 # This bootstraps Puppet on Ubuntu 12.04 LTS.
+# Based on: https://raw.githubusercontent.com/hashicorp/puppet-bootstrap/master/ubuntu.sh
 #
 set -e
+
+# Install wget
+sudo apt-get install -qy wget;
 
 # Load up the release information
 . /etc/lsb-release
@@ -50,3 +54,26 @@ if [ $DISTRIB_CODENAME != "trusty" ]; then
 fi
 gem install --no-ri --no-rdoc rubygems-update
 update_rubygems >/dev/null
+
+mkdir -p /etc/puppet/modules;
+if [ ! -d /etc/puppet/modules/file_concat ]; then
+puppet module install ispavailability/file_concat
+fi
+if [ ! -d /etc/puppet/modules/apt ]; then
+puppet module install puppetlabs-apt --version 1.8.0
+fi
+if [ ! -d /etc/puppet/modules/java ]; then
+puppet module install puppetlabs-java
+fi
+if [ ! -d /etc/puppet/modules/elasticsearch ]; then
+puppet module install elasticsearch-elasticsearch
+fi
+if [ ! -d /etc/puppet/modules/logstash ]; then
+puppet module install elasticsearch-logstash
+fi
+if [ ! -f /etc/init.d/kibana ]; then
+sudo cp /vagrant/kibana4_init /etc/init.d/kibana
+sudo sed -i 's/\r//' /etc/init.d/kibana
+sudo chmod +x /etc/init.d/kibana
+sudo update-rc.d kibana defaults
+fi

@@ -1,21 +1,3 @@
-define append_if_no_such_line($file, $line, $refreshonly = 'false') {
-   exec { "/bin/echo '$line' >> '$file'":
-      unless      => "/bin/grep -Fxqe '$line' '$file'",
-      path        => "/bin",
-      refreshonly => $refreshonly
-   }
-}
-
-# Update APT Cache
-class { 'apt':
-  always_apt_update => true,
-}
-
-exec { 'apt-get update':
-  before  => [ Class['logstash'] ],
-  command => '/usr/bin/apt-get update -qq'
-}
-
 file { '/vagrant/elasticsearch':
   ensure => 'directory',
   group  => 'vagrant',
@@ -23,28 +5,52 @@ file { '/vagrant/elasticsearch':
 }
 
 # Java is required
-class { 'java': }
+package { 'java':
+  ensure => present,
+  name => 'java-1.7.0-openjdk.x86_64',
+}
+#package { 'java-1.7.0-openjdk': ensure => latest }
+
+$elasticsearch_root_backupdir = '/var/backups'
+file { $elasticsearch_root_backupdir:
+  ensure  => 'directory',
+  owner   => 'root',
+  group   => 'root',
+  mode    => '0744',
+}
 
 # Elasticsearch
 class { 'elasticsearch':
+  ensure       => 'present',
   manage_repo  => true,
-  repo_version => '1.5',
+  repo_version => '1.6',
+  java_install => false,
+
+  require      => [
+    Package['java'],
+    File[$elasticsearch_root_backupdir]
+  ]
 }
 
-elasticsearch::instance { 'es-01':
+$elasticsearch_port = 9200
+$elasticsearch_instance_name = 'es-01'
+elasticsearch::instance { $elasticsearch_instance_name:
   config => { 
-  'cluster.name' => 'vagrant_elasticsearch',
+  'cluster.name'             => 'vagrant_elasticsearch',
   'index.number_of_replicas' => '0',
   'index.number_of_shards'   => '1',
-  'network.host' => '0.0.0.0'
+  'network.host'             => '0.0.0.0',
+  'http.port'                => $elasticsearch_port,
+  'path.repo'                => [$elasticsearch_root_backupdir],
   },        # Configuration hash
   init_defaults => { }, # Init defaults hash
-  before => Exec['start kibana']
+
+  before => Service['kibana']
 }
 
 elasticsearch::plugin{'royrusso/elasticsearch-HQ':
   module_dir => 'HQ',
-  instances  => 'es-01'
+  instances  => $elasticsearch_instance_name
 }
 
 # Logstash
@@ -52,8 +58,13 @@ class { 'logstash':
   # autoupgrade  => true,
   ensure       => 'present',
   manage_repo  => true,
-  repo_version => '1.4',
-  require      => [ Class['java'], Class['elasticsearch'] ],
+  repo_version => '1.5',
+  java_install => false,
+
+  require      => [
+    Package['java'],
+    Elasticsearch::Instance[$elasticsearch_instance_name],
+  ],
 }
 
 logstash::configfile { 'metrics':
@@ -61,24 +72,14 @@ logstash::configfile { 'metrics':
 }
 
 # Kibana
-package { 'curl':
-  ensure  => 'present',
-  require => [ Class['apt'] ],
-}
+class { 'kibana':
+  version => '4.1.1',
+  port    => '5601',
+  es_url  => "http://localhost:${elasticsearch_port}",
+  legacy_service_mode => true,
 
-file { '/opt/kibana':
-  ensure => 'directory',
-  group  => 'vagrant',
-  owner  => 'vagrant',
-}
-
-exec { 'download_kibana':
-  command => '/usr/bin/curl -L https://download.elasticsearch.org/kibana/kibana/kibana-4.0.2-linux-x64.tar.gz | /bin/tar xvz -C /opt/kibana --strip-components 1',
-  require => [ Package['curl'], File['/opt/kibana'], Class['elasticsearch'] ],
-  timeout => 1800
-}
-
-exec {'start kibana':
-  command => '/bin/sleep 10 && /opt/kibana/bin/kibana & ',
-  require => [ Exec['download_kibana']]
+  require => [
+    Package['java'],
+    Elasticsearch::Instance[$elasticsearch_instance_name],
+  ]
 }
